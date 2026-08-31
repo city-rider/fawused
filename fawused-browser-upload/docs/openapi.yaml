@@ -1,0 +1,1550 @@
+openapi: 3.1.0
+info:
+  title: FAWUsed.ru API
+  version: 1.0.0
+  description: >
+    MVP API for the FAWUsed.ru commercial vehicle classifieds platform.
+    Public market: Russia. Public catalog: FAW only in MVP.
+servers:
+  - url: https://api.fawused.ru/api/v1
+    description: Production
+  - url: https://staging-api.fawused.ru/api/v1
+    description: Staging
+tags:
+  - name: Auth
+  - name: Profile
+  - name: Organizations
+  - name: Listings
+  - name: Catalog
+  - name: Favorites
+  - name: Complaints
+  - name: Reference
+  - name: Analytics
+  - name: API Credentials
+  - name: Webhooks
+
+paths:
+  /auth/otp/request:
+    post:
+      tags: [Auth]
+      summary: Request SMS OTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OtpRequest'
+      responses:
+        '202':
+          description: OTP request accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericAccepted'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /auth/otp/verify:
+    post:
+      tags: [Auth]
+      summary: Verify SMS OTP and create session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OtpVerify'
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSession'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout current session
+      security:
+        - sessionCookie: []
+      responses:
+        '204':
+          description: Logged out
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/logout-all:
+    post:
+      tags: [Auth]
+      summary: Logout all sessions
+      security:
+        - sessionCookie: []
+      responses:
+        '204':
+          description: All sessions revoked
+
+  /me:
+    get:
+      tags: [Profile]
+      summary: Get current user profile and organization context
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+    patch:
+      tags: [Profile]
+      summary: Update current user profile
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserPatch'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /organizations:
+    post:
+      tags: [Organizations]
+      summary: Create organization
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizationCreate'
+      responses:
+        '201':
+          description: Organization created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '409':
+          description: User already belongs to an organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /organizations/me:
+    get:
+      tags: [Organizations]
+      summary: Get current organization
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+    patch:
+      tags: [Organizations]
+      summary: Update current organization
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizationPatch'
+      responses:
+        '200':
+          description: Updated organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+
+  /organizations/me/members:
+    post:
+      tags: [Organizations]
+      summary: Invite organization member
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizationMemberInvite'
+      responses:
+        '201':
+          description: Invitation/member created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationMember'
+        '409':
+          description: User already belongs to another organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /organizations/me/members/{memberId}:
+    patch:
+      tags: [Organizations]
+      summary: Change organization member role
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/MemberId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role:
+                  $ref: '#/components/schemas/OrganizationRole'
+      responses:
+        '200':
+          description: Member updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationMember'
+    delete:
+      tags: [Organizations]
+      summary: Remove organization member
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/MemberId'
+      responses:
+        '204':
+          description: Member removed
+
+  /listings:
+    post:
+      tags: [Listings]
+      summary: Create listing
+      description: >
+        For B2B API clients, seller_listing_id is required. Supports Idempotency-Key.
+        trust_status is read-only and cannot be set by sellers.
+      security:
+        - sessionCookie: []
+        - apiKey: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ListingCreate'
+      responses:
+        '201':
+          description: Listing created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Listing'
+        '409':
+          description: VIN or seller listing conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/BusinessRuleError'
+    get:
+      tags: [Listings]
+      summary: Get seller listings
+      security:
+        - sessionCookie: []
+        - apiKey: []
+      parameters:
+        - in: query
+          name: lifecycle_status
+          schema:
+            $ref: '#/components/schemas/ListingLifecycleStatus'
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        '200':
+          description: Seller listing page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListingPage'
+
+  /listings/{listingId}:
+    get:
+      tags: [Listings]
+      summary: Get seller listing
+      security:
+        - sessionCookie: []
+        - apiKey: []
+      parameters:
+        - $ref: '#/components/parameters/ListingId'
+      responses:
+        '200':
+          description: Listing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Listing'
+    patch:
+      tags: [Listings]
+      summary: Update seller listing
+      security:
+        - sessionCookie: []
+        - apiKey: []
+      parameters:
+        - $ref: '#/components/parameters/ListingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ListingPatch'
+      responses:
+        '200':
+          description: Listing updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Listing'
+        '403':
+          description: Forbidden field or insufficient permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags: [Listings]
+      summary: Archive listing
+      security:
+        - sessionCookie: []
+        - apiKey: []
+      parameters:
+        - $ref: '#/components/parameters/ListingId'
+      responses:
+        '204':
+          description: Listing archived
+
+  /listings/{listingId}/publish:
+    post:
+      tags: [Listings]
+      summary: Publish listing
+      security:
+        - sessionCookie: []
+        - apiKey: []
+      parameters:
+        - $ref: '#/components/parameters/ListingId'
+      responses:
+        '200':
+          description: Listing published
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Listing'
+        '409':
+          description: Active VIN conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/BusinessRuleError'
+
+  /listings/{listingId}/archive:
+    post:
+      tags: [Listings]
+      summary: Archive listing
+      security:
+        - sessionCookie: []
+        - apiKey: []
+      parameters:
+        - $ref: '#/components/parameters/ListingId'
+      responses:
+        '200':
+          description: Listing archived
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Listing'
+
+  /listings/{listingId}/sold:
+    post:
+      tags: [Listings]
+      summary: Mark listing as sold
+      security:
+        - sessionCookie: []
+        - apiKey: []
+      parameters:
+        - $ref: '#/components/parameters/ListingId'
+      responses:
+        '200':
+          description: Listing marked sold
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Listing'
+
+  /listings/{listingId}/photos:
+    post:
+      tags: [Listings]
+      summary: Add photo metadata after upload
+      security:
+        - sessionCookie: []
+        - apiKey: []
+      parameters:
+        - $ref: '#/components/parameters/ListingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ListingPhotoCreate'
+      responses:
+        '201':
+          description: Photo accepted for processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListingPhoto'
+
+  /listings/{listingId}/photos/order:
+    patch:
+      tags: [Listings]
+      summary: Reorder listing photos
+      security:
+        - sessionCookie: []
+        - apiKey: []
+      parameters:
+        - $ref: '#/components/parameters/ListingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [photo_ids]
+              properties:
+                photo_ids:
+                  type: array
+                  minItems: 1
+                  maxItems: 25
+                  uniqueItems: true
+                  items:
+                    type: string
+                    format: uuid
+      responses:
+        '204':
+          description: Order updated
+
+  /listings/{listingId}/photos/{photoId}:
+    delete:
+      tags: [Listings]
+      summary: Delete listing photo
+      security:
+        - sessionCookie: []
+        - apiKey: []
+      parameters:
+        - $ref: '#/components/parameters/ListingId'
+        - $ref: '#/components/parameters/PhotoId'
+      responses:
+        '204':
+          description: Photo deleted
+
+  /catalog:
+    get:
+      tags: [Catalog]
+      summary: Public catalog
+      parameters:
+        - in: query
+          name: manufacturer_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: model_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: city_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: radius_km
+          schema:
+            type: integer
+            enum: [0, 50, 100, 200, 500, 1000]
+        - in: query
+          name: year_from
+          schema:
+            type: integer
+            minimum: 1980
+        - in: query
+          name: year_to
+          schema:
+            type: integer
+            maximum: 2100
+        - in: query
+          name: mileage_from
+          schema:
+            type: integer
+            minimum: 0
+        - in: query
+          name: mileage_to
+          schema:
+            type: integer
+            minimum: 0
+        - in: query
+          name: price_from
+          schema:
+            type: integer
+            minimum: 0
+        - in: query
+          name: price_to
+          schema:
+            type: integer
+            minimum: 0
+        - in: query
+          name: trust_status
+          schema:
+            $ref: '#/components/schemas/TrustStatus'
+        - in: query
+          name: vehicle_type
+          schema:
+            $ref: '#/components/schemas/VehicleType'
+        - in: query
+          name: wheel_formula
+          schema:
+            type: string
+        - in: query
+          name: power_from
+          schema:
+            type: integer
+            minimum: 0
+        - in: query
+          name: power_to
+          schema:
+            type: integer
+            minimum: 0
+        - in: query
+          name: gearbox
+          schema:
+            $ref: '#/components/schemas/Gearbox'
+        - in: query
+          name: vat_status
+          schema:
+            $ref: '#/components/schemas/VatStatus'
+        - in: query
+          name: leasing_available
+          schema:
+            type: boolean
+        - in: query
+          name: sort
+          schema:
+            type: string
+            enum: [recommended, approved, new, price_asc, price_desc, year_desc, mileage_asc, distance]
+            default: recommended
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 24
+      responses:
+        '200':
+          description: Catalog page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicListingPage'
+
+  /catalog/{listingId}:
+    get:
+      tags: [Catalog]
+      summary: Public listing card
+      parameters:
+        - $ref: '#/components/parameters/ListingId'
+      responses:
+        '200':
+          description: Public listing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicListing'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /catalog/{listingId}/complaints:
+    post:
+      tags: [Complaints]
+      summary: Submit complaint
+      parameters:
+        - $ref: '#/components/parameters/ListingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ComplaintCreate'
+      responses:
+        '201':
+          description: Complaint created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Complaint'
+
+  /catalog/{listingId}/contact-events:
+    post:
+      tags: [Catalog]
+      summary: Record contact event
+      parameters:
+        - $ref: '#/components/parameters/ListingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [event]
+              properties:
+                event:
+                  type: string
+                  enum: [reveal_phone, telegram_click]
+      responses:
+        '202':
+          description: Event accepted
+
+  /favorites:
+    get:
+      tags: [Favorites]
+      summary: Get favorites
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Favorites
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PublicListingSummary'
+
+  /favorites/{listingId}:
+    post:
+      tags: [Favorites]
+      summary: Add favorite
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/ListingId'
+      responses:
+        '204':
+          description: Added
+    delete:
+      tags: [Favorites]
+      summary: Remove favorite
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/ListingId'
+      responses:
+        '204':
+          description: Removed
+
+  /reference/models:
+    get:
+      tags: [Reference]
+      summary: Get models
+      responses:
+        '200':
+          description: Models
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ModelReference'
+
+  /reference/specifications:
+    get:
+      tags: [Reference]
+      summary: Get specification dictionaries
+      responses:
+        '200':
+          description: Reference dictionaries
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /reference/locations:
+    get:
+      tags: [Reference]
+      summary: Get supported cities
+      responses:
+        '200':
+          description: Cities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CityReference'
+
+  /analytics/listings:
+    get:
+      tags: [Analytics]
+      summary: Seller listing analytics
+      security:
+        - sessionCookie: []
+        - apiKey: []
+      parameters:
+        - in: query
+          name: date_from
+          schema:
+            type: string
+            format: date
+        - in: query
+          name: date_to
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Listing analytics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListingAnalytics'
+
+  /api-credentials:
+    post:
+      tags: [API Credentials]
+      summary: Create API credential
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApiCredentialCreate'
+      responses:
+        '201':
+          description: Credential created; secret is returned only once
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiCredentialSecret'
+
+  /api-credentials/{credentialId}/rotate:
+    post:
+      tags: [API Credentials]
+      summary: Rotate API credential
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CredentialId'
+      responses:
+        '201':
+          description: New secret
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiCredentialSecret'
+
+  /api-credentials/{credentialId}:
+    delete:
+      tags: [API Credentials]
+      summary: Revoke API credential
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/CredentialId'
+      responses:
+        '204':
+          description: Revoked
+
+  /webhooks:
+    get:
+      tags: [Webhooks]
+      summary: List webhooks
+      security:
+        - sessionCookie: []
+        - apiKey: []
+      responses:
+        '200':
+          description: Webhooks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Webhook'
+    post:
+      tags: [Webhooks]
+      summary: Create webhook
+      security:
+        - sessionCookie: []
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookCreate'
+      responses:
+        '201':
+          description: Webhook created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Webhook'
+
+  /webhooks/{webhookId}:
+    delete:
+      tags: [Webhooks]
+      summary: Delete webhook
+      security:
+        - sessionCookie: []
+        - apiKey: []
+      parameters:
+        - $ref: '#/components/parameters/WebhookId'
+      responses:
+        '204':
+          description: Deleted
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: fawused_session
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  parameters:
+    IdempotencyKey:
+      in: header
+      name: Idempotency-Key
+      required: false
+      schema:
+        type: string
+        maxLength: 128
+    ListingId:
+      in: path
+      name: listingId
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PhotoId:
+      in: path
+      name: photoId
+      required: true
+      schema:
+        type: string
+        format: uuid
+    MemberId:
+      in: path
+      name: memberId
+      required: true
+      schema:
+        type: string
+        format: uuid
+    CredentialId:
+      in: path
+      name: credentialId
+      required: true
+      schema:
+        type: string
+        format: uuid
+    WebhookId:
+      in: path
+      name: webhookId
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ValidationError:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    BusinessRuleError:
+      description: Business rule violation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    RateLimited:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    OtpRequest:
+      type: object
+      required: [phone]
+      properties:
+        phone:
+          type: string
+          examples: ['+79991234567']
+
+    OtpVerify:
+      type: object
+      required: [phone, code]
+      properties:
+        phone:
+          type: string
+        code:
+          type: string
+          minLength: 4
+          maxLength: 8
+
+    GenericAccepted:
+      type: object
+      properties:
+        accepted:
+          type: boolean
+          const: true
+
+    AuthSession:
+      type: object
+      required: [user]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+
+    User:
+      type: object
+      required: [id, phone, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        phone:
+          type: string
+        name:
+          type: [string, 'null']
+        telegram:
+          type: [string, 'null']
+        status:
+          type: string
+          enum: [active, suspended, blocked, deleted_soft]
+        created_at:
+          type: string
+          format: date-time
+
+    UserPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          maxLength: 120
+        telegram:
+          type: [string, 'null']
+          maxLength: 120
+
+    MeResponse:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        organization:
+          anyOf:
+            - $ref: '#/components/schemas/Organization'
+            - type: 'null'
+        organization_role:
+          anyOf:
+            - $ref: '#/components/schemas/OrganizationRole'
+            - type: 'null'
+
+    OrganizationRole:
+      type: string
+      enum: [owner, manager]
+
+    Organization:
+      type: object
+      required: [id, legal_name, inn, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        legal_name:
+          type: string
+        public_name:
+          type: [string, 'null']
+        inn:
+          type: string
+        status:
+          type: string
+          enum: [active, suspended, blocked, deleted_soft]
+
+    OrganizationCreate:
+      type: object
+      required: [legal_name, inn]
+      properties:
+        legal_name:
+          type: string
+          maxLength: 255
+        public_name:
+          type: string
+          maxLength: 255
+        inn:
+          type: string
+          minLength: 10
+          maxLength: 12
+
+    OrganizationPatch:
+      type: object
+      properties:
+        legal_name:
+          type: string
+          maxLength: 255
+        public_name:
+          type: string
+          maxLength: 255
+
+    OrganizationMember:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user:
+          $ref: '#/components/schemas/User'
+        role:
+          $ref: '#/components/schemas/OrganizationRole'
+
+    OrganizationMemberInvite:
+      type: object
+      required: [phone, role]
+      properties:
+        phone:
+          type: string
+        role:
+          $ref: '#/components/schemas/OrganizationRole'
+
+    VehicleType:
+      type: string
+      enum: [tractor, dump_truck, chassis, flatbed, van, refrigerated, special, other]
+
+    Gearbox:
+      type: string
+      enum: [manual, robotized, automatic]
+
+    VatStatus:
+      type: string
+      enum: [with_vat, without_vat]
+
+    TrustStatus:
+      type: string
+      enum: [used, select, approved]
+
+    ListingLifecycleStatus:
+      type: string
+      enum: [draft, published, archived, sold, blocked, deleted_soft]
+
+    ListingCreate:
+      type: object
+      additionalProperties: false
+      required:
+        - vin
+        - manufacturer_id
+        - model_id
+        - production_year
+        - mileage_km
+        - vehicle_type
+        - power_hp
+        - wheel_formula
+        - gearbox
+        - price_rub
+        - vat_status
+        - leasing_available
+        - city_id
+        - lat
+        - lon
+        - contact_phone
+      properties:
+        seller_listing_id:
+          type: string
+          maxLength: 128
+        vin:
+          type: string
+          minLength: 11
+          maxLength: 32
+        manufacturer_id:
+          type: string
+          format: uuid
+        model_id:
+          type: string
+          format: uuid
+        modification_id:
+          type: [string, 'null']
+          format: uuid
+        production_year:
+          type: integer
+          minimum: 1980
+          maximum: 2100
+        mileage_km:
+          type: integer
+          minimum: 0
+        vehicle_type:
+          $ref: '#/components/schemas/VehicleType'
+        power_hp:
+          type: integer
+          minimum: 1
+        engine_volume_cc:
+          type: [integer, 'null']
+          minimum: 1
+        fuel_type:
+          type: string
+          enum: [diesel, gas, electric, hybrid, other]
+          default: diesel
+        wheel_formula:
+          type: string
+          maxLength: 16
+        gearbox:
+          $ref: '#/components/schemas/Gearbox'
+        ecological_class:
+          type: [string, 'null']
+        gross_weight_kg:
+          type: [integer, 'null']
+          minimum: 0
+        curb_weight_kg:
+          type: [integer, 'null']
+          minimum: 0
+        payload_kg:
+          type: [integer, 'null']
+          minimum: 0
+        wheelbase_mm:
+          type: [integer, 'null']
+          minimum: 0
+        fuel_tank_l:
+          type: [integer, 'null']
+          minimum: 0
+        body_type:
+          type: [string, 'null']
+        price_rub:
+          type: integer
+          minimum: 1
+        vat_status:
+          $ref: '#/components/schemas/VatStatus'
+        leasing_available:
+          type: boolean
+        city_id:
+          type: string
+          format: uuid
+        lat:
+          type: number
+          minimum: -90
+          maximum: 90
+        lon:
+          type: number
+          minimum: -180
+          maximum: 180
+        contact_phone:
+          type: string
+        telegram:
+          type: [string, 'null']
+        description:
+          type: [string, 'null']
+          maxLength: 10000
+        video_url:
+          type: [string, 'null']
+          format: uri
+
+    ListingPatch:
+      type: object
+      additionalProperties: false
+      description: trust_status and vin are not editable by seller after publish
+      properties:
+        mileage_km:
+          type: integer
+          minimum: 0
+        price_rub:
+          type: integer
+          minimum: 1
+        vat_status:
+          $ref: '#/components/schemas/VatStatus'
+        leasing_available:
+          type: boolean
+        city_id:
+          type: string
+          format: uuid
+        lat:
+          type: number
+        lon:
+          type: number
+        contact_phone:
+          type: string
+        telegram:
+          type: [string, 'null']
+        description:
+          type: [string, 'null']
+          maxLength: 10000
+        video_url:
+          type: [string, 'null']
+          format: uri
+
+    ListingPhotoCreate:
+      type: object
+      required: [upload_key]
+      properties:
+        upload_key:
+          type: string
+          description: Object storage upload token/key
+        client_filename:
+          type: string
+        position:
+          type: integer
+          minimum: 1
+          maximum: 25
+
+    ListingPhoto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [uploaded, validated, processing, ready, failed]
+        position:
+          type: integer
+        public_url:
+          type: [string, 'null']
+          format: uri
+
+    Listing:
+      allOf:
+        - $ref: '#/components/schemas/ListingCreate'
+        - type: object
+          required: [id, lifecycle_status, trust_status]
+          properties:
+            id:
+              type: string
+              format: uuid
+            lifecycle_status:
+              $ref: '#/components/schemas/ListingLifecycleStatus'
+            trust_status:
+              $ref: '#/components/schemas/TrustStatus'
+            vin_masked:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+            published_at:
+              type: [string, 'null']
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
+            photos:
+              type: array
+              items:
+                $ref: '#/components/schemas/ListingPhoto'
+
+    ListingPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Listing'
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total:
+          type: integer
+
+    PublicListingSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        model:
+          type: string
+        production_year:
+          type: integer
+        mileage_km:
+          type: integer
+        price_rub:
+          type: integer
+        vat_status:
+          $ref: '#/components/schemas/VatStatus'
+        leasing_available:
+          type: boolean
+        trust_status:
+          $ref: '#/components/schemas/TrustStatus'
+        city:
+          type: string
+        distance_km:
+          type: [number, 'null']
+        cover_photo_url:
+          type: [string, 'null']
+          format: uri
+
+    PublicListing:
+      allOf:
+        - $ref: '#/components/schemas/PublicListingSummary'
+        - type: object
+          properties:
+            vin_masked:
+              type: string
+            seller:
+              type: object
+              properties:
+                type:
+                  type: string
+                  enum: [private, organization]
+                display_name:
+                  type: string
+                telegram_available:
+                  type: boolean
+            specifications:
+              type: object
+              additionalProperties: true
+            photos:
+              type: array
+              items:
+                $ref: '#/components/schemas/ListingPhoto'
+            published_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
+
+    PublicListingPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicListingSummary'
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total:
+          type: integer
+
+    ComplaintCreate:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          enum: [duplicate, sold, wrong_data, fraud, stolen_content, prohibited, other]
+        comment:
+          type: [string, 'null']
+          maxLength: 2000
+
+    Complaint:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [new, in_review, resolved, rejected]
+        created_at:
+          type: string
+          format: date-time
+
+    ModelReference:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        manufacturer_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+
+    CityReference:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        region_name:
+          type: string
+        lat:
+          type: number
+        lon:
+          type: number
+
+    ListingAnalytics:
+      type: object
+      properties:
+        active_stock:
+          type: integer
+        listing_views:
+          type: integer
+        reveal_phone:
+          type: integer
+        telegram_click:
+          type: integer
+        favorites:
+          type: integer
+
+    ApiCredentialCreate:
+      type: object
+      required: [name, scopes]
+      properties:
+        name:
+          type: string
+          maxLength: 120
+        scopes:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            enum: [listings:read, listings:write, photos:write, analytics:read, webhooks:manage]
+
+    ApiCredentialSecret:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        key_id:
+          type: string
+        secret:
+          type: string
+          description: Returned only once
+        scopes:
+          type: array
+          items:
+            type: string
+
+    WebhookCreate:
+      type: object
+      required: [url, events]
+      properties:
+        url:
+          type: string
+          format: uri
+        events:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            enum:
+              - listing.published
+              - listing.updated
+              - listing.archived
+              - listing.blocked
+              - listing.trust_status_changed
+              - media.processed
+              - media.failed
+
+    Webhook:
+      allOf:
+        - $ref: '#/components/schemas/WebhookCreate'
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            status:
+              type: string
+              enum: [active, degraded, disabled]
+            created_at:
+              type: string
+              format: date-time
+
+    Error:
+      type: object
+      required: [code, message, correlation_id]
+      properties:
+        code:
+          type: string
+          examples: [VALIDATION_ERROR]
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+        correlation_id:
+          type: string
